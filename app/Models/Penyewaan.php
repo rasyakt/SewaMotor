@@ -23,6 +23,8 @@ class Penyewaan extends Model
     protected $casts = [
         'tanggal_mulai' => 'date',
         'tanggal_selesai' => 'date',
+        'tanggal_kembali_aktual' => 'date',
+        'notifikasi_dikirim_at' => 'datetime',
     ];
 
     // Relasi ke penyewa
@@ -59,5 +61,73 @@ class Penyewaan extends Model
         $end = Carbon::parse($this->tanggal_selesai);
     
         return $start->diffInDays($end);
+    }
+
+    /**
+     * Method untuk handle return motor
+     */
+    public function handleReturn($tanggalKembali = null, $statusRusak = false)
+    {
+        if (!$tanggalKembali) {
+            $tanggalKembali = Carbon::now()->toDateString();
+        }
+
+        $tanggalSelesai = Carbon::parse($this->tanggal_selesai);
+        $tanggalKembaliActual = Carbon::parse($tanggalKembali);
+
+        // Update tanggal kembali aktual
+        $this->tanggal_kembali_aktual = $tanggalKembali;
+
+        // Tentukan status pengembalian
+        if ($statusRusak) {
+            $this->status_pengembalian = 'rusak';
+        } elseif ($tanggalKembaliActual->isAfter($tanggalSelesai)) {
+            $this->status_pengembalian = 'terlambat';
+            $this->hari_terlambat = $tanggalKembaliActual->diffInDays($tanggalSelesai);
+            
+            // Hitung denda keterlambatan (default: 10% dari tarif harian per hari terlambat)
+            $hariSewa = $this->hitungDurasi();
+            if ($hariSewa > 0) {
+                $tarifHarian = $this->harga_total / $hariSewa;
+                $this->denda_keterlambatan = $tarifHarian * 0.1 * $this->hari_terlambat;
+            }
+        } else {
+            $this->status_pengembalian = 'tepat_waktu';
+        }
+
+        // Update status penyewaan
+        $this->status = 'selesai';
+
+        // Update status motor kembali tersedia
+        $this->motor->update(['status' => 'tersedia']);
+
+        $this->save();
+
+        return $this;
+    }
+
+    /**
+     * Check apakah penyewaan sudah melewati tanggal selesai
+     */
+    public function isOverdue()
+    {
+        return Carbon::now()->isAfter($this->tanggal_selesai) && 
+               $this->status != 'selesai' && 
+               $this->status != 'dibatalkan';
+    }
+
+    /**
+     * Get status terlambat dalam bahasa Indonesia
+     */
+    public function getStatusPengembalianLabel()
+    {
+        $labels = [
+            'pending' => 'Belum Dikembalikan',
+            'tepat_waktu' => 'Tepat Waktu',
+            'terlambat' => 'Terlambat',
+            'rusak' => 'Rusak',
+        ];
+
+        return $labels[$this->status_pengembalian] ?? 'Tidak Diketahui';
     }
 }

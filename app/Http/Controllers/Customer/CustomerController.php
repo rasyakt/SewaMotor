@@ -154,4 +154,51 @@ public function dashboard()
         return redirect()->route('customer.bookings.history')
             ->with('success', 'Pembayaran berhasil diproses.');
     }
+
+    /**
+     * Return motor (kembalikan motor)
+     */
+    public function returnMotor(Request $request, $id)
+    {
+        $request->validate([
+            'kondisi_motor' => 'required|in:baik,rusak',
+            'catatan' => 'nullable|string|max:500',
+        ]);
+
+        $penyewaan = Penyewaan::findOrFail($id);
+
+        // Validasi hanya bisa return motor sendiri
+        if ($penyewaan->penyewa_id !== Auth::id()) {
+            abort(403, 'Unauthorized');
+        }
+
+        // Validasi status harus aktif/sudah dibayar
+        if (!in_array($penyewaan->status, ['dikonfirmasi', 'dibayar'])) {
+            return back()->with('error', 'Motor tidak dapat dikembalikan dengan status saat ini.');
+        }
+
+        // Handle return
+        $isRusak = $request->kondisi_motor === 'rusak';
+        $penyewaan->handleReturn(now()->toDateString(), $isRusak);
+
+        // Buat record di Transaksi jika ada denda
+        if ($penyewaan->denda_keterlambatan > 0) {
+            Transaksi::create([
+                'penyewaan_id' => $penyewaan->id,
+                'jumlah' => $penyewaan->denda_keterlambatan,
+                'metode_pembayaran' => 'denda',
+                'status' => 'pending',
+                'tanggal' => now(),
+                'bukti_pembayaran' => null,
+            ]);
+        }
+
+        $message = 'Motor berhasil dikembalikan.';
+        if ($penyewaan->status_pengembalian === 'terlambat') {
+            $message .= " Terlambat {$penyewaan->hari_terlambat} hari. Denda: Rp " . number_format($penyewaan->denda_keterlambatan, 0, ',', '.');
+        }
+
+        return redirect()->route('customer.bookings.history')
+            ->with('success', $message);
+    }
 }

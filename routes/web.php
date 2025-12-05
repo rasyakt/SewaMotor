@@ -50,6 +50,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/bookings/history', [CustomerController::class, 'bookingHistory'])->name('customer.bookings.history');
         Route::get('/payments/{id}', [CustomerController::class, 'payment'])->name('customer.payments.create');
         Route::post('/payments/{id}', [CustomerController::class, 'processPayment'])->name('customer.payments.process');
+        Route::post('/bookings/{id}/return', [CustomerController::class, 'returnMotor'])->name('customer.bookings.return');
     });
 });
 

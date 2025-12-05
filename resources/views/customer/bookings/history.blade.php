@@ -65,7 +65,8 @@
                                 <th>Tanggal Sewa</th>
                                 <th>Durasi</th>
                                 <th>Total Biaya</th>
-                                <th>Status</th>
+                                <th>Status Penyewaan</th>
+                                <th>Status Pengembalian</th>
                                 <th>Aksi</th>
                             </tr>
                         </thead>
@@ -127,6 +128,40 @@
                                     @endif
                                 </td>
                                 <td>
+                                    @if($penyewaan->status == 'selesai')
+                                        @if($penyewaan->status_pengembalian == 'tepat_waktu')
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-check"></i> Tepat Waktu
+                                            </span>
+                                        @elseif($penyewaan->status_pengembalian == 'terlambat')
+                                            <span class="badge bg-warning">
+                                                <i class="fas fa-exclamation-triangle"></i> Terlambat {{ $penyewaan->hari_terlambat }} hari
+                                            </span>
+                                            @if($penyewaan->denda_keterlambatan > 0)
+                                                <br><small class="text-danger">
+                                                    Denda: Rp {{ number_format($penyewaan->denda_keterlambatan, 0, ',', '.') }}
+                                                </small>
+                                            @endif
+                                        @elseif($penyewaan->status_pengembalian == 'rusak')
+                                            <span class="badge bg-danger">
+                                                <i class="fas fa-tools"></i> Rusak
+                                            </span>
+                                        @else
+                                            <span class="badge bg-secondary">
+                                                <i class="fas fa-hourglass"></i> Belum Dikembalikan
+                                            </span>
+                                        @endif
+                                    @elseif($penyewaan->isOverdue())
+                                        <span class="badge bg-danger">
+                                            <i class="fas fa-exclamation-triangle"></i> OVERDUE!
+                                        </span>
+                                    @else
+                                        <span class="badge bg-secondary">
+                                            <i class="fas fa-hourglass"></i> Belum Dikembalikan
+                                        </span>
+                                    @endif
+                                </td>
+                                <td>
                                     @if($penyewaan->status == 'pending')
                                         <a href="{{ route('customer.payments.create', $penyewaan->id) }}" 
                                            class="btn btn-success btn-sm">
@@ -137,18 +172,80 @@
                                             <i class="fas fa-clock"></i> Menunggu Admin
                                         </span>
                                     @elseif($penyewaan->status == 'dikonfirmasi')
-                                        <span class="text-success">
-                                            <i class="fas fa-check"></i> Aktif
-                                        </span>
+                                        <button class="btn btn-warning btn-sm" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#returnModal{{ $penyewaan->id }}">
+                                            <i class="fas fa-undo"></i> Kembalikan
+                                        </button>
                                     @endif
                                     
-                                    <button class="btn btn-outline-primary btn-sm mt-1" 
+                                    <button class="btn btn-outline-primary btn-sm" 
                                             data-bs-toggle="modal" 
                                             data-bs-target="#detailModal{{ $penyewaan->id }}">
                                         <i class="fas fa-eye"></i> Detail
                                     </button>
                                 </td>
                             </tr>
+
+                            <!-- Return Modal -->
+                            <div class="modal fade" id="returnModal{{ $penyewaan->id }}" tabindex="-1">
+                                <div class="modal-dialog modal-md">
+                                    <div class="modal-content">
+                                        <div class="modal-header bg-warning text-dark">
+                                            <h5 class="modal-title">
+                                                <i class="fas fa-undo"></i> Kembalikan Motor
+                                            </h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <form action="{{ route('customer.bookings.return', $penyewaan->id) }}" method="POST">
+                                            @csrf
+                                            <div class="modal-body">
+                                                <div class="alert alert-info">
+                                                    <strong>{{ $penyewaan->motor->merk }} ({{ $penyewaan->motor->no_plat }})</strong><br>
+                                                    Tanggal Selesai: {{ \Carbon\Carbon::parse($penyewaan->tanggal_selesai)->format('d M Y') }}
+                                                    @if(\Carbon\Carbon::now()->isAfter($penyewaan->tanggal_selesai))
+                                                        <br><span class="badge bg-danger">
+                                                            <i class="fas fa-exclamation-triangle"></i>
+                                                            Terlambat {{ \Carbon\Carbon::parse($penyewaan->tanggal_selesai)->diffInDays(\Carbon\Carbon::now()) }} hari!
+                                                        </span>
+                                                    @endif
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label class="form-label">Kondisi Motor</label>
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="radio" name="kondisi_motor" 
+                                                               id="kondisi_baik{{ $penyewaan->id }}" value="baik" required>
+                                                        <label class="form-check-label" for="kondisi_baik{{ $penyewaan->id }}">
+                                                            <i class="fas fa-check-circle text-success"></i> Baik-Baik Saja
+                                                        </label>
+                                                    </div>
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="radio" name="kondisi_motor" 
+                                                               id="kondisi_rusak{{ $penyewaan->id }}" value="rusak">
+                                                        <label class="form-check-label" for="kondisi_rusak{{ $penyewaan->id }}">
+                                                            <i class="fas fa-exclamation-circle text-danger"></i> Ada yang Rusak
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="catatan{{ $penyewaan->id }}" class="form-label">Catatan (Opsional)</label>
+                                                    <textarea class="form-control" id="catatan{{ $penyewaan->id }}" 
+                                                              name="catatan" rows="3" 
+                                                              placeholder="Tuliskan catatan atau kerusakan jika ada..."></textarea>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                                                <button type="submit" class="btn btn-warning">
+                                                    <i class="fas fa-undo"></i> Kembalikan Motor
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
 
                             <!-- Detail Modal -->
                             <div class="modal fade" id="detailModal{{ $penyewaan->id }}" tabindex="-1">
